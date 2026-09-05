@@ -112,22 +112,6 @@
           <span id="theme-label" class="hidden sm:inline">Escuro</span>
         </button>
 
-        <!-- Botão Guia Didático -->
-        <button 
-          id="btn-open-guide"
-          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 transition-colors"
-          title="Ver metáforas e conceitos didáticos">
-          🎓 <span class="hidden sm:inline">Guia Didático</span>
-        </button>
-
-        <!-- Botão Exportar Backup JSON -->
-        <button 
-          id="btn-export"
-          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 transition-colors"
-          title="Exportar dados dos leads em arquivo JSON">
-          💾 <span class="hidden md:inline">Exportar JSON</span>
-        </button>
-
         <!-- Botão Importar Backup JSON (Input oculto) -->
         <label 
           class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 transition-colors cursor-pointer"
@@ -843,7 +827,7 @@
     // -------------------------------------------------------------------------
     // 💾 EXPORTAR BACKUP JSON
     // -------------------------------------------------------------------------
-    document.getElementById('btn-export').addEventListener('click', () => {
+    document.getElementById('btn-export')?.addEventListener('click', () => {
       if (allLeads.length === 0) {
         showToast('Nenhum lead cadastrado para exportar!', 'info');
         return;
@@ -940,7 +924,7 @@
     // Modal do Guia Didático
     const openGuide = () => modalGuide.classList.remove('hidden');
     const closeGuide = () => modalGuide.classList.add('hidden');
-    document.getElementById('btn-open-guide').addEventListener('click', openGuide);
+    document.getElementById('btn-open-guide')?.addEventListener('click', openGuide);
     document.getElementById('btn-close-guide').addEventListener('click', closeGuide);
     document.getElementById('btn-ok-guide').addEventListener('click', closeGuide);
 
