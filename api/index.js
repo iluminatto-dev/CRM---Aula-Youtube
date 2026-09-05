@@ -99,8 +99,9 @@ app.use(cors());
 // Ensina o garçom (Express) a entender pedidos que chegam no formato JSON (o idioma da web)
 app.use(express.json());
 
-// Serve arquivos estáticos da pasta "public" (onde mora o nosso index.html decorado com Tailwind)
-const publicDir = path.resolve(process.cwd(), 'public');
+// Serve arquivos estáticos da pasta "dist" (build) ou "public" (dev)
+const distDir = path.resolve(process.cwd(), 'dist');
+const publicDir = fs.existsSync(path.join(distDir, 'index.html')) ? distDir : path.resolve(process.cwd(), 'public');
 app.use(express.static(publicDir));
 
 // ----------------------------------------------------------------------------------------------
