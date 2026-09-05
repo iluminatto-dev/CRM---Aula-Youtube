@@ -1,0 +1,1022 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CRM Kanban Didático | Node.js + SQLite</title>
+  
+  <!-- 🎨 TAILWIND CSS CDN (A Decoração e as Tintas da nossa Sala) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Ícones Phosphor/Lucide via SVG inline para máxima compatibilidade sem depender de pacotes externos -->
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#f0fdf4',
+              100: '#dcfce7',
+              500: '#22c55e',
+              600: '#16a34a',
+              700: '#15803d',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <script>
+    // Inicialização imediata do tema para evitar piscamento (FOUC)
+    const savedTheme = localStorage.getItem('crm_theme');
+    if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  </script>
+  <style>
+    /* Estilos para animações suaves e arrastar e soltar (Drag & Drop) */
+    .kanban-col {
+      min-height: 480px;
+      transition: background-color 0.2s ease, border-color 0.2s ease;
+    }
+    .kanban-col.drag-over {
+      background-color: rgba(59, 130, 246, 0.08);
+      border-style: dashed;
+      border-color: #3b82f6;
+    }
+    .dark .kanban-col.drag-over {
+      background-color: rgba(59, 130, 246, 0.18);
+      border-color: #60a5fa;
+    }
+    .card-lead {
+      cursor: grab;
+      transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.2s ease, border-color 0.2s ease;
+    }
+    .card-lead:active {
+      cursor: grabbing;
+    }
+    .card-lead.dragging {
+      opacity: 0.4;
+      transform: scale(0.98);
+    }
+    /* Scrollbar delicada para colunas */
+    .custom-scroll::-webkit-scrollbar {
+      width: 6px;
+    }
+    .custom-scroll::-webkit-scrollbar-thumb {
+      background-color: #cbd5e1;
+      border-radius: 9999px;
+    }
+    .dark .custom-scroll::-webkit-scrollbar-thumb {
+      background-color: #334155;
+    }
+  </style>
+</head>
+<body class="bg-slate-100 dark:bg-slate-950 text-slate-800 dark:text-slate-100 antialiased min-h-screen flex flex-col font-sans transition-colors duration-200">
+
+  <!-- ===================================================================== -->
+  <!-- 🧭 BARRA DE NAVEGAÇÃO SUPERIOR                                        -->
+  <!-- ===================================================================== -->
+  <header class="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 sticky top-0 z-30 shadow-xs transition-colors duration-200">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-wrap items-center justify-between gap-3">
+      
+      <!-- Logotipo & Status do SQLite -->
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-sm font-bold text-xl">
+          📊
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-lg font-bold tracking-tight text-slate-900 dark:text-white leading-tight">CRM Kanban Didático</h1>
+            <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+              SQLite Conectado
+            </span>
+          </div>
+          <p class="text-xs text-slate-500 dark:text-slate-400">Node.js + Express + SQLite3 (Didático para Iniciantes)</p>
+        </div>
+      </div>
+
+      <!-- Ações Rápidas do Cabeçalho -->
+      <div class="flex flex-wrap items-center gap-2">
+        <!-- Botão Alternar Tema Claro / Escuro -->
+        <button 
+          id="btn-theme-toggle"
+          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 transition-colors"
+          title="Alternar entre tema Claro e Escuro"
+          aria-label="Alternar tema">
+          <span id="theme-icon">🌙</span>
+          <span id="theme-label" class="hidden sm:inline">Escuro</span>
+        </button>
+
+        <!-- Botão Guia Didático -->
+        <button 
+          id="btn-open-guide"
+          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 transition-colors"
+          title="Ver metáforas e conceitos didáticos">
+          🎓 <span class="hidden sm:inline">Guia Didático</span>
+        </button>
+
+        <!-- Botão Exportar Backup JSON -->
+        <button 
+          id="btn-export"
+          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 transition-colors"
+          title="Exportar dados dos leads em arquivo JSON">
+          💾 <span class="hidden md:inline">Exportar JSON</span>
+        </button>
+
+        <!-- Botão Importar Backup JSON (Input oculto) -->
+        <label 
+          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 transition-colors cursor-pointer"
+          title="Importar leads de um arquivo de backup">
+          📥 <span class="hidden md:inline">Importar</span>
+          <input type="file" id="input-import-file" accept=".json" class="hidden" />
+        </label>
+
+        <!-- Botão Limpar / Restaurar Testes -->
+        <button 
+          id="btn-reset"
+          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 dark:hover:bg-amber-900/50 border border-amber-200 dark:border-amber-800 transition-colors"
+          title="Restaura os 3 leads de exemplo padrão">
+          🧹 <span class="hidden sm:inline">Restaurar Testes</span>
+        </button>
+
+
+        <!-- Botão Novo Lead Principal -->
+        <button 
+          id="btn-new-lead-top"
+          class="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs sm:text-sm font-semibold rounded-lg text-white bg-blue-600 hover:bg-blue-700 shadow-sm transition-all active:scale-95">
+          <span>+</span>
+          <span>Novo Lead</span>
+        </button>
+      </div>
+
+    </div>
+  </header>
+
+  <!-- ===================================================================== -->
+  <!-- 📈 DASHBOARD DE INDICADORES (Topo)                                     -->
+  <!-- ===================================================================== -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full flex-1 flex flex-col gap-6">
+
+    <section aria-label="Indicadores do CRM" class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      
+      <!-- Card 1: Total de Leads -->
+      <div class="bg-white dark:bg-slate-900 rounded-xl p-4 sm:p-5 border border-slate-200 dark:border-slate-800 shadow-xs flex items-center justify-between transition-colors">
+        <div>
+          <p class="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">Total de Leads</p>
+          <h2 id="metric-total-leads" class="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white mt-1">0</h2>
+          <p class="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Cadastrados no SQLite</p>
+        </div>
+        <div class="w-12 h-12 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center text-xl font-bold">
+          👥
+        </div>
+      </div>
+
+      <!-- Card 2: Em Negociação -->
+      <div class="bg-white dark:bg-slate-900 rounded-xl p-4 sm:p-5 border border-slate-200 dark:border-slate-800 shadow-xs flex items-center justify-between transition-colors">
+        <div>
+          <p class="text-xs font-medium uppercase tracking-wider text-amber-600 dark:text-amber-400">Em Negociação</p>
+          <h2 id="metric-negotiation" class="text-2xl sm:text-3xl font-bold text-amber-900 dark:text-amber-300 mt-1">0</h2>
+          <p class="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Oportunidades em aberto</p>
+        </div>
+        <div class="w-12 h-12 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center text-xl font-bold">
+          ⏳
+        </div>
+      </div>
+
+      <!-- Card 3: Vendas Fechadas (Soma R$) -->
+      <div class="bg-white dark:bg-slate-900 rounded-xl p-4 sm:p-5 border border-slate-200 dark:border-slate-800 shadow-xs flex items-center justify-between transition-colors">
+        <div>
+          <p class="text-xs font-medium uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Vendas Fechadas</p>
+          <h2 id="metric-closed-value" class="text-2xl sm:text-3xl font-bold text-emerald-700 dark:text-emerald-300 mt-1">R$ 0,00</h2>
+          <p id="metric-closed-count" class="text-xs text-slate-400 dark:text-slate-500 mt-0.5">0 negócios fechados</p>
+        </div>
+        <div class="w-12 h-12 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-xl font-bold">
+          💰
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ===================================================================== -->
+    <!-- 📋 QUADRO KANBAN (4 Colunas)                                          -->
+    <!-- ===================================================================== -->
+    <section aria-label="Quadro Kanban" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 flex-1">
+      
+      <!-- COLUNA 1: NOVO (Azul) -->
+      <div 
+        class="bg-slate-50/80 dark:bg-slate-900/60 rounded-2xl border border-blue-200 dark:border-blue-900/50 p-3 flex flex-col kanban-col shadow-xs transition-colors"
+        data-status="Novo"
+        id="column-Novo">
+        <!-- Cabeçalho da Coluna -->
+        <div class="flex items-center justify-between pb-3 mb-2 border-b border-blue-100 dark:border-blue-900/40 px-1">
+          <div class="flex items-center gap-2">
+            <span class="w-3 h-3 rounded-full bg-blue-500"></span>
+            <h3 class="text-sm font-bold text-slate-800 dark:text-slate-100">Novo</h3>
+            <span id="badge-count-Novo" class="px-2 py-0.5 text-xs font-semibold rounded-full bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300">0</span>
+          </div>
+          <span id="subtotal-Novo" class="text-xs font-medium text-slate-500 dark:text-slate-400">R$ 0,00</span>
+        </div>
+        <!-- Lista de Cards da Coluna -->
+        <div id="cards-Novo" class="flex-1 flex flex-col gap-3 custom-scroll overflow-y-auto max-h-[70vh] p-1">
+          <!-- Cards injetados via JavaScript -->
+        </div>
+      </div>
+
+      <!-- COLUNA 2: EM NEGOCIAÇÃO (Amarelo) -->
+      <div 
+        class="bg-slate-50/80 dark:bg-slate-900/60 rounded-2xl border border-amber-200 dark:border-amber-900/50 p-3 flex flex-col kanban-col shadow-xs transition-colors"
+        data-status="Em Negociação"
+        id="column-Em-Negociacao">
+        <!-- Cabeçalho da Coluna -->
+        <div class="flex items-center justify-between pb-3 mb-2 border-b border-amber-100 dark:border-amber-900/40 px-1">
+          <div class="flex items-center gap-2">
+            <span class="w-3 h-3 rounded-full bg-amber-500"></span>
+            <h3 class="text-sm font-bold text-slate-800 dark:text-slate-100">Em Negociação</h3>
+            <span id="badge-count-Em Negociação" class="px-2 py-0.5 text-xs font-semibold rounded-full bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300">0</span>
+          </div>
+          <span id="subtotal-Em Negociação" class="text-xs font-medium text-slate-500 dark:text-slate-400">R$ 0,00</span>
+        </div>
+        <!-- Lista de Cards da Coluna -->
+        <div id="cards-Em Negociação" class="flex-1 flex flex-col gap-3 custom-scroll overflow-y-auto max-h-[70vh] p-1">
+          <!-- Cards injetados via JavaScript -->
+        </div>
+      </div>
+
+      <!-- COLUNA 3: FECHADO (Verde) -->
+      <div 
+        class="bg-slate-50/80 dark:bg-slate-900/60 rounded-2xl border border-emerald-200 dark:border-emerald-900/50 p-3 flex flex-col kanban-col shadow-xs transition-colors"
+        data-status="Fechado"
+        id="column-Fechado">
+        <!-- Cabeçalho da Coluna -->
+        <div class="flex items-center justify-between pb-3 mb-2 border-b border-emerald-100 dark:border-emerald-900/40 px-1">
+          <div class="flex items-center gap-2">
+            <span class="w-3 h-3 rounded-full bg-emerald-500"></span>
+            <h3 class="text-sm font-bold text-slate-800 dark:text-slate-100">Fechado</h3>
+            <span id="badge-count-Fechado" class="px-2 py-0.5 text-xs font-semibold rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300">0</span>
+          </div>
+          <span id="subtotal-Fechado" class="text-xs font-medium text-slate-500 dark:text-slate-400">R$ 0,00</span>
+        </div>
+        <!-- Lista de Cards da Coluna -->
+        <div id="cards-Fechado" class="flex-1 flex flex-col gap-3 custom-scroll overflow-y-auto max-h-[70vh] p-1">
+          <!-- Cards injetados via JavaScript -->
+        </div>
+      </div>
+
+      <!-- COLUNA 4: PERDIDO (Vermelho) -->
+      <div 
+        class="bg-slate-50/80 dark:bg-slate-900/60 rounded-2xl border border-rose-200 dark:border-rose-900/50 p-3 flex flex-col kanban-col shadow-xs transition-colors"
+        data-status="Perdido"
+        id="column-Perdido">
+        <!-- Cabeçalho da Coluna -->
+        <div class="flex items-center justify-between pb-3 mb-2 border-b border-rose-100 dark:border-rose-900/40 px-1">
+          <div class="flex items-center gap-2">
+            <span class="w-3 h-3 rounded-full bg-rose-500"></span>
+            <h3 class="text-sm font-bold text-slate-800 dark:text-slate-100">Perdido</h3>
+            <span id="badge-count-Perdido" class="px-2 py-0.5 text-xs font-semibold rounded-full bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300">0</span>
+          </div>
+          <span id="subtotal-Perdido" class="text-xs font-medium text-slate-500 dark:text-slate-400">R$ 0,00</span>
+        </div>
+        <!-- Lista de Cards da Coluna -->
+        <div id="cards-Perdido" class="flex-1 flex flex-col gap-3 custom-scroll overflow-y-auto max-h-[70vh] p-1">
+          <!-- Cards injetados via JavaScript -->
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- ===================================================================== -->
+  <!-- 🔘 BOTÃO FLUTUANTE "+ NOVO LEAD"                                      -->
+  <!-- ===================================================================== -->
+  <button 
+    id="btn-floating-lead"
+    class="fixed bottom-6 right-6 z-40 flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-5 py-3.5 rounded-full shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-0.5 active:scale-95"
+    title="Cadastrar novo cliente">
+    <span class="text-xl leading-none font-bold">+</span>
+    <span class="text-sm">Novo Lead</span>
+  </button>
+
+  <!-- ===================================================================== -->
+  <!-- 📝 MODAL DE CADASTRO DE NOVO LEAD                                      -->
+  <!-- ===================================================================== -->
+  <div id="modal-lead" class="fixed inset-0 z-50 hidden bg-slate-900/60 dark:bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-slate-900 rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 dark:border-slate-800 relative transition-colors">
+      
+      <!-- Fechar Modal -->
+      <button 
+        id="btn-close-modal"
+        class="absolute top-4 right-4 text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300 w-8 h-8 rounded-full flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+        aria-label="Fechar janela">
+        ✕
+      </button>
+
+      <!-- Título do Modal -->
+      <div class="flex items-center gap-3 mb-5">
+        <div class="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400 flex items-center justify-center text-lg">
+          👤
+        </div>
+        <div>
+          <h3 class="text-lg font-bold text-slate-900 dark:text-white">Cadastrar Novo Lead</h3>
+          <p class="text-xs text-slate-500 dark:text-slate-400">Adicione uma nova oportunidade ao pipeline</p>
+        </div>
+      </div>
+
+      <!-- Formulário -->
+      <form id="form-new-lead" class="flex flex-col gap-4">
+        
+        <div>
+          <label for="lead-nome" class="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+            Nome Completo <span class="text-rose-500">*</span>
+          </label>
+          <input 
+            type="text" 
+            id="lead-nome" 
+            name="nome" 
+            required 
+            placeholder="Ex.: Carlos Silva" 
+            class="w-full px-3.5 py-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+          />
+        </div>
+
+        <div>
+          <label for="lead-whatsapp" class="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+            WhatsApp (com DDD)
+          </label>
+          <input 
+            type="text" 
+            id="lead-whatsapp" 
+            name="whatsapp" 
+            placeholder="Ex.: +55 11 98765-4321" 
+            class="w-full px-3.5 py-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+          />
+          <span class="text-[11px] text-slate-400 dark:text-slate-500 mt-1 block">Gera link direto para abrir a conversa no WhatsApp</span>
+        </div>
+
+        <div>
+          <label for="lead-valor" class="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+            Valor Estimado (R$)
+          </label>
+          <div class="relative">
+            <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400 dark:text-slate-500 text-sm font-medium">R$</span>
+            <input 
+              type="number" 
+              step="0.01" 
+              min="0" 
+              id="lead-valor" 
+              name="valor" 
+              placeholder="0,00" 
+              class="w-full pl-10 pr-3.5 py-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+            />
+          </div>
+        </div>
+
+        <!-- Botões de Ação -->
+        <div class="flex items-center justify-end gap-2.5 mt-2 pt-3 border-t border-slate-100 dark:border-slate-800">
+          <button 
+            type="button" 
+            id="btn-cancel-modal"
+            class="px-4 py-2 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors">
+            Cancelar
+          </button>
+          <button 
+            type="submit" 
+            id="btn-submit-lead"
+            class="px-5 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition-all flex items-center gap-1.5">
+            <span>Salvar Lead</span>
+          </button>
+        </div>
+
+      </form>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- 🎓 MODAL DE METÁFORAS DIDÁTICAS (Para Iniciantes)                      -->
+  <!-- ===================================================================== -->
+  <div id="modal-guide" class="fixed inset-0 z-50 hidden bg-slate-900/60 dark:bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-slate-900 rounded-2xl max-w-2xl w-full p-6 sm:p-7 shadow-2xl border border-slate-100 dark:border-slate-800 relative max-h-[90vh] overflow-y-auto custom-scroll transition-colors">
+      
+      <button 
+        id="btn-close-guide"
+        class="absolute top-4 right-4 text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300 w-8 h-8 rounded-full flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+        aria-label="Fechar janela">
+        ✕
+      </button>
+
+      <div class="flex items-center gap-3 mb-4">
+        <span class="text-3xl">🎓</span>
+        <div>
+          <h3 class="text-xl font-bold text-slate-900 dark:text-white">Dicionário Didático do Iniciante</h3>
+          <p class="text-xs text-slate-500 dark:text-slate-400">Como esta aplicação funciona por trás dos panos</p>
+        </div>
+      </div>
+
+      <div class="space-y-4 text-sm text-slate-700 dark:text-slate-300">
+        
+        <div class="p-4 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-900/50">
+          <h4 class="font-bold text-blue-900 dark:text-blue-200 flex items-center gap-2">
+            🍽️ Express = O Garçom
+          </h4>
+          <p class="text-xs text-blue-800 dark:text-blue-300 mt-1 leading-relaxed">
+            O Express fica ouvindo os pedidos vindos do navegador. Quando você clica em "+ Novo Lead", 
+            ele anota e leva para a cozinha. Quando você pede a lista de clientes, ele traz a bandeja cheia de dados!
+          </p>
+        </div>
+
+        <div class="p-4 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-100 dark:border-amber-900/50">
+          <h4 class="font-bold text-amber-900 dark:text-amber-200 flex items-center gap-2">
+            📓 SQLite3 = O Caderno de Anotações
+          </h4>
+          <p class="text-xs text-amber-800 dark:text-amber-300 mt-1 leading-relaxed">
+            É o arquivo <code class="bg-white dark:bg-slate-800 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-800">crm.db</code> no seu computador.
+            Ao invés de um banco de dados complexo e pesado na nuvem, ele funciona como um caderno seguro gravado no disco.
+          </p>
+        </div>
+
+        <div class="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-100 dark:border-emerald-900/50">
+          <h4 class="font-bold text-emerald-900 dark:text-emerald-200 flex items-center gap-2">
+            🏛️ HTML = O Esqueleto da Sala
+          </h4>
+          <p class="text-xs text-emerald-800 dark:text-emerald-300 mt-1 leading-relaxed">
+            Define onde fica a barra superior, os cards de métricas, as 4 colunas do Kanban e os formulários de cadastro.
+          </p>
+        </div>
+
+        <div class="p-4 rounded-xl bg-purple-50 dark:bg-purple-950/40 border border-purple-100 dark:border-purple-900/50">
+          <h4 class="font-bold text-purple-900 dark:text-purple-200 flex items-center gap-2">
+            🎨 Tailwind CSS = A Decoração e as Tintas
+          </h4>
+          <p class="text-xs text-purple-800 dark:text-purple-300 mt-1 leading-relaxed">
+            Todas as cores suaves, cantos arredondados, sombras e espaçamentos bonitos que você vê na tela foram criados com classes rápidas do Tailwind via CDN.
+          </p>
+        </div>
+
+        <div class="p-4 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-100 dark:border-rose-900/50">
+          <h4 class="font-bold text-rose-900 dark:text-rose-200 flex items-center gap-2">
+            🕊️ Fetch = O Mensageiro Silencioso
+          </h4>
+          <p class="text-xs text-rose-800 dark:text-rose-300 mt-1 leading-relaxed">
+            No passado, para salvar um cliente a página inteira recarregava piscando a tela. Com a função <code class="bg-white dark:bg-slate-800 px-1.5 py-0.5 rounded border border-rose-200 dark:border-rose-800">fetch()</code>,
+            um mensageiro silencioso conversa com o servidor e atualiza apenas a coluna do lead em milissegundos!
+          </p>
+        </div>
+
+      </div>
+
+      <div class="mt-6 pt-4 border-t border-slate-200 dark:border-slate-800 flex justify-end">
+        <button 
+          id="btn-ok-guide"
+          class="px-4 py-2 bg-slate-800 dark:bg-blue-600 hover:bg-slate-900 dark:hover:bg-blue-700 text-white text-xs font-semibold rounded-lg transition-colors">
+          Entendi, vamos praticar!
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- 🔔 NOTIFICAÇÃO TOAST FLUTUANTE                                        -->
+  <!-- ===================================================================== -->
+  <div id="toast-container" class="fixed top-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+  <!-- ===================================================================== -->
+  <!-- 💻 JAVASCRIPT FRONT-END (O Cérebro Visual da Aplicação)                -->
+  <!-- ===================================================================== -->
+  <script>
+    /**
+     * Array em memória que guarda a lista atual de leads.
+     * Sempre que algo muda, sincronizamos com a API via `fetch`!
+     */
+    let allLeads = [];
+
+    // As 4 etapas oficiais do nosso Kanban
+    const STATUS_STAGES = ['Novo', 'Em Negociação', 'Fechado', 'Perdido'];
+
+    // Elementos do DOM
+    const modalLead = document.getElementById('modal-lead');
+    const modalGuide = document.getElementById('modal-guide');
+    const formNewLead = document.getElementById('form-new-lead');
+    const inputImportFile = document.getElementById('input-import-file');
+
+    // -------------------------------------------------------------------------
+    // 📢 SISTEMA DE NOTIFICAÇÕES (Toast)
+    // -------------------------------------------------------------------------
+    function showToast(message, type = 'success') {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      
+      const bgColors = {
+        success: 'bg-emerald-600 text-white',
+        error: 'bg-rose-600 text-white',
+        info: 'bg-blue-600 text-white'
+      };
+
+      toast.className = `${bgColors[type] || bgColors.info} px-4 py-2.5 rounded-xl shadow-lg text-xs font-medium flex items-center gap-2 transform transition-all duration-300 translate-y-2 opacity-0 pointer-events-auto`;
+      toast.innerHTML = `<span>${type === 'success' ? '✓' : type === 'error' ? '⚠' : 'ℹ'}</span> <span>${message}</span>`;
+      
+      container.appendChild(toast);
+      
+      requestAnimationFrame(() => {
+        toast.classList.remove('translate-y-2', 'opacity-0');
+      });
+
+      setTimeout(() => {
+        toast.classList.add('opacity-0', 'translate-y-2');
+        setTimeout(() => toast.remove(), 300);
+      }, 3500);
+    }
+
+    // -------------------------------------------------------------------------
+    // 💵 UTILITÁRIO: FORMATAR NÚMEROS COMO MOEDA BRASILEIRA (R$)
+    // -------------------------------------------------------------------------
+    function formatCurrency(val) {
+      const num = Number(val) || 0;
+      return num.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    }
+
+    // -------------------------------------------------------------------------
+    // 📱 UTILITÁRIO: LIMPAR WHATSAPP PARA LINK
+    // -------------------------------------------------------------------------
+    function cleanWhatsAppNumber(phone) {
+      if (!phone) return '';
+      // Remove tudo que não for dígito
+      return String(phone).replace(/\D/g, '');
+    }
+
+    // -------------------------------------------------------------------------
+    // 🌐 CARREGAR LEADS DO SERVIDOR (GET /api/leads)
+    // -------------------------------------------------------------------------
+    async function fetchLeads() {
+      try {
+        const response = await fetch('/api/leads');
+        if (!response.ok) throw new Error('Não foi possível carregar os leads.');
+        allLeads = await response.json();
+        renderKanban();
+      } catch (error) {
+        console.error('Erro ao buscar leads:', error);
+        showToast('Erro ao carregar dados do SQLite', 'error');
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // 🎨 RENDERIZAR O KANBAN E O DASHBOARD
+    // -------------------------------------------------------------------------
+    function renderKanban() {
+      // 1. Limpa as 4 colunas
+      STATUS_STAGES.forEach(st => {
+        const container = document.getElementById(`cards-${st}`);
+        if (container) container.innerHTML = '';
+      });
+
+      // Contadores e somatórios
+      let totalLeads = allLeads.length;
+      let inNegotiation = 0;
+      let closedTotalValue = 0;
+      let closedCount = 0;
+
+      const columnStats = {
+        'Novo': { count: 0, totalVal: 0 },
+        'Em Negociação': { count: 0, totalVal: 0 },
+        'Fechado': { count: 0, totalVal: 0 },
+        'Perdido': { count: 0, totalVal: 0 }
+      };
+
+      // 2. Itera sobre cada lead e monta o card visual
+      allLeads.forEach(lead => {
+        const status = STATUS_STAGES.includes(lead.status) ? lead.status : 'Novo';
+        const valor = Number(lead.valor) || 0;
+
+        // Atualiza estatísticas
+        if (columnStats[status]) {
+          columnStats[status].count += 1;
+          columnStats[status].totalVal += valor;
+        }
+
+        if (status === 'Em Negociação') inNegotiation++;
+        if (status === 'Fechado') {
+          closedTotalValue += valor;
+          closedCount++;
+        }
+
+        // Monta o Card HTML
+        const card = createCardElement(lead);
+        const colContainer = document.getElementById(`cards-${status}`);
+        if (colContainer) colContainer.appendChild(card);
+      });
+
+      // 3. Atualiza os cards de indicadores no topo
+      document.getElementById('metric-total-leads').textContent = totalLeads;
+      document.getElementById('metric-negotiation').textContent = inNegotiation;
+      document.getElementById('metric-closed-value').textContent = formatCurrency(closedTotalValue);
+      document.getElementById('metric-closed-count').textContent = `${closedCount} ${closedCount === 1 ? 'negócio fechado' : 'negócios fechados'}`;
+
+      // 4. Atualiza os cabeçalhos das colunas
+      STATUS_STAGES.forEach(st => {
+        const badge = document.getElementById(`badge-count-${st}`);
+        const subtotal = document.getElementById(`subtotal-${st}`);
+        if (badge) badge.textContent = columnStats[st].count;
+        if (subtotal) subtotal.textContent = formatCurrency(columnStats[st].totalVal);
+
+        // Se a coluna estiver vazia, exibe um recado acolhedor
+        const container = document.getElementById(`cards-${st}`);
+        if (container && container.children.length === 0) {
+          container.innerHTML = `
+            <div class="text-center py-10 px-4 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-xl text-slate-400 dark:text-slate-500">
+              <span class="text-2xl block mb-1">📭</span>
+              <p class="text-xs">Nenhum lead aqui ainda</p>
+            </div>
+          `;
+        }
+      });
+    }
+
+    // -------------------------------------------------------------------------
+    // 🃏 CRIAR O ELEMENTO VISUAL DO CARD DO LEAD
+    // -------------------------------------------------------------------------
+    function createCardElement(lead) {
+      const card = document.createElement('div');
+      card.className = 'card-lead bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-xs hover:shadow-md transition-all flex flex-col gap-2.5';
+      card.setAttribute('draggable', 'true');
+      card.dataset.id = lead.id;
+
+      // Eventos de Drag & Drop
+      card.addEventListener('dragstart', (e) => {
+        e.dataTransfer.setData('text/plain', String(lead.id));
+        card.classList.add('dragging');
+      });
+      card.addEventListener('dragend', () => {
+        card.classList.remove('dragging');
+      });
+
+      // Limpeza de WhatsApp
+      const rawWhats = lead.whatsapp || '';
+      const cleanWhats = cleanWhatsAppNumber(rawWhats);
+      const whatsHref = cleanWhats ? `https://wa.me/${cleanWhats}?text=Olá%20${encodeURIComponent(lead.nome)},%20tudo%20bem?` : '#';
+
+      // Posição no ciclo de status para saber se ativa setas
+      const currentIndex = STATUS_STAGES.indexOf(lead.status);
+      const hasPrev = currentIndex > 0;
+      const hasNext = currentIndex < STATUS_STAGES.length - 1;
+      const prevStatus = hasPrev ? STATUS_STAGES[currentIndex - 1] : null;
+      const nextStatus = hasNext ? STATUS_STAGES[currentIndex + 1] : null;
+
+      card.innerHTML = `
+        <!-- Topo do Card: Nome e Ação de Excluir -->
+        <div class="flex items-start justify-between gap-2">
+          <div class="flex-1">
+            <h4 class="text-sm font-bold text-slate-900 dark:text-white leading-snug break-words">${escapeHTML(lead.nome)}</h4>
+            <span class="text-[11px] text-slate-400 dark:text-slate-500 block mt-0.5">ID #${lead.id} • ${formatDate(lead.criado_em)}</span>
+          </div>
+          <button 
+            onclick="deleteLead(${lead.id})" 
+            class="text-slate-300 dark:text-slate-600 hover:text-rose-600 dark:hover:text-rose-400 transition-colors p-1 rounded-md hover:bg-rose-50 dark:hover:bg-rose-950/40 text-xs" 
+            title="Excluir este lead">
+            🗑️
+          </button>
+        </div>
+
+        <!-- Valor Estimado -->
+        <div class="flex items-center justify-between pt-1 border-t border-slate-100 dark:border-slate-800">
+          <span class="text-xs text-slate-500 dark:text-slate-400 font-medium">Valor:</span>
+          <span class="text-xs font-bold text-slate-900 dark:text-white bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md">
+            ${formatCurrency(lead.valor)}
+          </span>
+        </div>
+
+        <!-- Botão WhatsApp e Ações de Movimento -->
+        <div class="flex items-center justify-between gap-2 pt-1">
+          <!-- Botão WhatsApp -->
+          ${cleanWhats ? `
+            <a 
+              href="${whatsHref}" 
+              target="_blank" 
+              rel="noopener noreferrer" 
+              class="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 px-2.5 py-1 rounded-lg border border-emerald-200 dark:border-emerald-800 transition-colors">
+              <span>💬</span>
+              <span>WhatsApp</span>
+            </a>
+          ` : `
+            <span class="text-[11px] text-slate-400 dark:text-slate-500 italic">Sem WhatsApp</span>
+          `}
+
+          <!-- Setinhas para mover de coluna sem precisar de mouse/drag -->
+          <div class="flex items-center gap-1">
+            ${hasPrev ? `
+              <button 
+                onclick="updateLeadStatus(${lead.id}, '${prevStatus}')" 
+                class="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 flex items-center justify-center text-xs font-bold transition-colors"
+                title="Mover para ${prevStatus}">
+                ←
+              </button>
+            ` : ''}
+            ${hasNext ? `
+              <button 
+                onclick="updateLeadStatus(${lead.id}, '${nextStatus}')" 
+                class="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 flex items-center justify-center text-xs font-bold transition-colors"
+                title="Mover para ${nextStatus}">
+                →
+              </button>
+            ` : ''}
+          </div>
+        </div>
+      `;
+
+      return card;
+    }
+
+    // -------------------------------------------------------------------------
+    // 🔄 ATUALIZAR STATUS DO LEAD (PATCH /api/leads/:id/status)
+    // -------------------------------------------------------------------------
+    async function updateLeadStatus(id, newStatus) {
+      try {
+        const res = await fetch(`/api/leads/${id}/status`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: newStatus })
+        });
+
+        if (!res.ok) throw new Error('Falha ao atualizar status');
+
+        // Atualiza localmente sem precisar recarregar a tela inteira!
+        const lead = allLeads.find(l => l.id === Number(id));
+        if (lead) {
+          lead.status = newStatus;
+          renderKanban();
+          showToast(`Lead movido para "${newStatus}"!`, 'info');
+        }
+      } catch (error) {
+        console.error(error);
+        showToast('Erro ao atualizar status do lead', 'error');
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // ➕ SALVAR NOVO LEAD (POST /api/leads)
+    // -------------------------------------------------------------------------
+    formNewLead.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const nomeInput = document.getElementById('lead-nome');
+      const whatsInput = document.getElementById('lead-whatsapp');
+      const valorInput = document.getElementById('lead-valor');
+
+      const nome = nomeInput.value.trim();
+      const whatsapp = whatsInput.value.trim();
+      const valor = parseFloat(valorInput.value) || 0;
+
+      if (!nome) {
+        showToast('Por favor, informe o nome do lead.', 'error');
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/leads', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nome, whatsapp, valor })
+        });
+
+        if (!res.ok) {
+          const errData = await res.json();
+          throw new Error(errData.error || 'Erro ao cadastrar lead');
+        }
+
+        const newLead = await res.json();
+        
+        // Adiciona ao topo da lista em memória
+        allLeads.unshift(newLead);
+        renderKanban();
+
+        // Limpa formulário e fecha modal
+        formNewLead.reset();
+        closeLeadModal();
+        showToast('🎉 Lead cadastrado com sucesso!');
+      } catch (error) {
+        console.error(error);
+        showToast(error.message || 'Erro ao cadastrar lead', 'error');
+      }
+    });
+
+    // -------------------------------------------------------------------------
+    // 🗑️ EXCLUIR LEAD (DELETE /api/leads/:id)
+    // -------------------------------------------------------------------------
+    async function deleteLead(id) {
+      if (!confirm('Deseja realmente excluir este lead?')) return;
+
+      try {
+        const res = await fetch(`/api/leads/${id}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error('Falha ao excluir');
+
+        allLeads = allLeads.filter(l => l.id !== Number(id));
+        renderKanban();
+        showToast('Lead removido do sistema.', 'info');
+      } catch (error) {
+        console.error(error);
+        showToast('Erro ao excluir lead', 'error');
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // 🧹 LIMPAR / RESTAURAR TESTES (POST /api/leads/reset)
+    // -------------------------------------------------------------------------
+    document.getElementById('btn-reset').addEventListener('click', async () => {
+      if (!confirm('Restaurar os 3 leads didáticos originais de exemplo?')) return;
+
+      try {
+        const res = await fetch('/api/leads/reset', { method: 'POST' });
+        if (!res.ok) throw new Error('Erro ao restaurar dados');
+
+        await fetchLeads();
+        showToast('Dados de teste restaurados com sucesso!');
+      } catch (error) {
+        console.error(error);
+        showToast('Erro ao restaurar dados', 'error');
+      }
+    });
+
+    // -------------------------------------------------------------------------
+    // 💾 EXPORTAR BACKUP JSON
+    // -------------------------------------------------------------------------
+    document.getElementById('btn-export').addEventListener('click', () => {
+      if (allLeads.length === 0) {
+        showToast('Nenhum lead cadastrado para exportar!', 'info');
+        return;
+      }
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(allLeads, null, 2));
+      const dlAnchorElem = document.createElement('a');
+      const dateStr = new Date().toISOString().split('T')[0];
+      dlAnchorElem.setAttribute("href", dataStr);
+      dlAnchorElem.setAttribute("download", `crm-leads-backup-${dateStr}.json`);
+      document.body.appendChild(dlAnchorElem);
+      dlAnchorElem.click();
+      dlAnchorElem.remove();
+      showToast('Backup exportado com sucesso!');
+    });
+
+    // -------------------------------------------------------------------------
+    // 📥 IMPORTAR BACKUP JSON
+    // -------------------------------------------------------------------------
+    inputImportFile.addEventListener('change', async (event) => {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try {
+          const importedLeads = JSON.parse(e.target.result);
+          if (!Array.isArray(importedLeads)) {
+            throw new Error('O arquivo deve conter uma lista (array) de leads.');
+          }
+
+          const res = await fetch('/api/leads/import', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(importedLeads)
+          });
+
+          if (!res.ok) throw new Error('Erro ao importar para o SQLite');
+
+          const data = await res.json();
+          await fetchLeads();
+          showToast(`Sucesso! ${data.count || 0} leads importados!`);
+        } catch (err) {
+          console.error(err);
+          showToast('Arquivo JSON inválido ou corrompido.', 'error');
+        } finally {
+          inputImportFile.value = '';
+        }
+      };
+      reader.readAsText(file);
+    });
+
+    // -------------------------------------------------------------------------
+    // 🎯 CONFIGURAÇÃO DE DRAG & DROP NAS COLUNAS
+    // -------------------------------------------------------------------------
+    document.querySelectorAll('.kanban-col').forEach(column => {
+      column.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        column.classList.add('drag-over');
+      });
+
+      column.addEventListener('dragleave', () => {
+        column.classList.remove('drag-over');
+      });
+
+      column.addEventListener('drop', (e) => {
+        e.preventDefault();
+        column.classList.remove('drag-over');
+        
+        const leadId = e.dataTransfer.getData('text/plain');
+        const targetStatus = column.dataset.status;
+
+        if (leadId && targetStatus) {
+          updateLeadStatus(leadId, targetStatus);
+        }
+      });
+    });
+
+    // -------------------------------------------------------------------------
+    // 🪟 CONTROLE DOS MODAIS
+    // -------------------------------------------------------------------------
+    function openLeadModal() {
+      modalLead.classList.remove('hidden');
+      setTimeout(() => document.getElementById('lead-nome').focus(), 50);
+    }
+    function closeLeadModal() {
+      modalLead.classList.add('hidden');
+    }
+
+    document.getElementById('btn-new-lead-top').addEventListener('click', openLeadModal);
+    document.getElementById('btn-floating-lead').addEventListener('click', openLeadModal);
+    document.getElementById('btn-close-modal').addEventListener('click', closeLeadModal);
+    document.getElementById('btn-cancel-modal').addEventListener('click', closeLeadModal);
+
+    // Modal do Guia Didático
+    const openGuide = () => modalGuide.classList.remove('hidden');
+    const closeGuide = () => modalGuide.classList.add('hidden');
+    document.getElementById('btn-open-guide').addEventListener('click', openGuide);
+    document.getElementById('btn-close-guide').addEventListener('click', closeGuide);
+    document.getElementById('btn-ok-guide').addEventListener('click', closeGuide);
+
+    // Fechar ao clicar fora ou com a tecla ESC
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        closeLeadModal();
+        closeGuide();
+      }
+    });
+    modalLead.addEventListener('click', (e) => {
+      if (e.target === modalLead) closeLeadModal();
+    });
+    modalGuide.addEventListener('click', (e) => {
+      if (e.target === modalGuide) closeGuide();
+    });
+
+    // -------------------------------------------------------------------------
+    // 🌗 GERENCIADOR DE TEMA CLARO / ESCURO
+    // -------------------------------------------------------------------------
+    const btnThemeToggle = document.getElementById('btn-theme-toggle');
+    const themeIcon = document.getElementById('theme-icon');
+    const themeLabel = document.getElementById('theme-label');
+
+    function syncThemeButton(isDark) {
+      if (themeIcon) themeIcon.textContent = isDark ? '☀️' : '🌙';
+      if (themeLabel) themeLabel.textContent = isDark ? 'Claro' : 'Escuro';
+      if (btnThemeToggle) {
+        btnThemeToggle.setAttribute('title', isDark ? 'Mudar para modo Claro' : 'Mudar para modo Escuro');
+        btnThemeToggle.setAttribute('aria-label', isDark ? 'Mudar para modo Claro' : 'Mudar para modo Escuro');
+      }
+    }
+
+    function toggleTheme() {
+      const isDark = document.documentElement.classList.toggle('dark');
+      try {
+        localStorage.setItem('crm_theme', isDark ? 'dark' : 'light');
+      } catch (err) {
+        console.warn('localStorage inacessível:', err);
+      }
+      syncThemeButton(isDark);
+      showToast(isDark ? 'Modo Escuro ativado 🌙' : 'Modo Claro ativado ☀️', 'info');
+    }
+
+    if (btnThemeToggle) {
+      // Sincroniza o ícone e rótulo inicial do botão conforme o tema ativo
+      syncThemeButton(document.documentElement.classList.contains('dark'));
+      btnThemeToggle.addEventListener('click', toggleTheme);
+    }
+
+    // -------------------------------------------------------------------------
+    // 🛠️ AUXILIARES
+    // -------------------------------------------------------------------------
+    function escapeHTML(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function formatDate(dateStr) {
+      if (!dateStr) return '';
+      try {
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return dateStr;
+        return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+      } catch {
+        return dateStr;
+      }
+    }
+
+    // 🚀 INICIALIZAÇÃO AUTOMÁTICA
+    window.addEventListener('DOMContentLoaded', fetchLeads);
+  </script>
+
+</body>
+</html>

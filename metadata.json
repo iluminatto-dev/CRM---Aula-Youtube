@@ -1,0 +1,6 @@
+{
+  "name": "CRM Kanban Didático",
+  "description": "Aplicação web completa de CRM Kanban didática com Node.js, Express, SQLite e interface Tailwind CSS, pronta para deploy na Vercel.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
